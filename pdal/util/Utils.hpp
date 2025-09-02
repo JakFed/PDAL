@@ -1149,6 +1149,8 @@ namespace Utils
     {
         return static_cast<typename std::underlying_type<E>::type>(e);
     }
+    void writeProgressSafe(int fd, const std::string& s);
+
 
 } // namespace Utils
 } // namespace pdal

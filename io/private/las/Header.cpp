@@ -130,6 +130,7 @@ StringList Header::validate(uint64_t fileSize) const
             ". Number of points too large for file size.");
     if (vlrOffset > fileSize)
         errors.push_back("Invalid VLR offset - exceeds file size.");
+    std::cout <<" pointcount " + std::to_string(pointCount()) << std::endl;
     if (!pointFormatSupported(pointFormat()))
         errors.push_back("Unsupported LAS input point format: " +
             Utils::toString((int)pointFormat()) + ".");

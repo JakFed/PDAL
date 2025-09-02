@@ -1,0 +1,32 @@
+FROM ubuntu:22.04 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build git wget python3 python3-pip \
+    libtiff-dev libgeotiff-dev libproj-dev libsqlite3-dev libgdal-dev pkg-config \
+    libjson-c-dev libcurl4-openssl-dev ca-certificates gnupg && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+# Wenn du den Fork lokal hast, baust du im Build-Kontext (siehe weiter unten).
+# Sonst könntest du hier git clone <dein-fork> verwenden.
+COPY . /src/PDAL
+
+WORKDIR /src/PDAL
+RUN mkdir -p build && cd build && \
+    cmake .. -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_TESTS=OFF && \
+    ninja -j$(nproc) && \
+    ninja install
+
+# Minimal runtime image that contains the PDAL install
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal28 libtiff5 libproj15 libsqlite3-0 procps mkfifo ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy /usr/local from builder (where ninja install put binaries/libs)
+COPY --from=builder /usr/local /usr/local
+ENV PATH=/usr/local/bin:$PATH
+
+# Keep container interactive for quick tests (override CMD when used as base)
+CMD ["/bin/bash"]

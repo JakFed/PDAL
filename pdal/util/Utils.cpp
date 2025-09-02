@@ -659,5 +659,36 @@ std::vector<std::string> Utils::simpleWordexp(const std::string& cmdline)
     return cmdArgs;
 }
 
-} // namespace pdal
+namespace Utils
+{
+static void safeWriteFd(int fd, const char* buf, size_t len)
+{
+    if (fd < 0) return;
+    size_t total = 0;
+    while (total < len)
+    {
+        ssize_t w = ::write(fd, buf + total, len - total);
+        if (w > 0)
+        {
+            total += static_cast<size_t>(w);
+            continue;
+        }
+        if (w == -1)
+        {
+            if (errno == EINTR) continue;
+            if (errno == EPIPE || errno == EAGAIN) {
+                // Reader closed the FIFO or non-blocking not ready => drop silently
+                break;
+            }
+            // other errors -> break (optionally log)
+            break;
+        }
+    }
+}
 
+void writeProgressSafe(int fd, const std::string& s)
+{
+    safeWriteFd(fd, s.c_str(), s.size());
+}
+}
+} // namespace pdal

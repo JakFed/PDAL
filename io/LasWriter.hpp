@@ -98,6 +98,13 @@ private:
     SpatialReference m_srs;
     std::set<std::string> m_forwards;
     std::vector<char> m_pointBuf;
+    uint64_t m_total_points = 0;
+    uint64_t m_points_written = 0 ;
+    uint64_t m_last_reported_points = 0;
+    double m_last_reported_percent = -1.0;
+    std::mutex m_progress_mutex;
+    double m_percent_step = 10.0;
+    uint64_t m_point_step = 100000;
     int m_srsCnt;
 
     MetadataNode m_forwardMetadata;

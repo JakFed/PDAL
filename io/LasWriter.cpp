@@ -198,6 +198,31 @@ void LasWriter::initialize()
         throwError(err.what());
     }
     fillForwardList();
+
+    // ------------------- Progress Init -------------------
+    // Versuche Optionen aus writer options zu lesen (Pipeline kann total_points setzen)
+    try
+    {    //TODO: options finden
+        // Beispiel: options() API kann variieren; passe ggf. an
+        // if (m_options.exists("total_points"))
+        //     m_total_points = m_options.getValues("total_points");
+        //
+        // if (m_options.exists("progress_percent_step"))
+        //     m_percent_step = m_options.getValueOrDefault<double>("progress_percent_step", m_percent_step);
+        //
+        // if (m_options.exists("progress_point_step"))
+        //     m_point_step = m_options.getValueOrDefault<uint64_t>("progress_point_step", m_point_step);
+    }
+    catch (...)
+    {
+        // ignore parse errors - nicht kritisch
+    }
+
+    // init counters
+    m_points_written = 0;
+    m_last_reported_points = 0;
+    m_last_reported_percent = -1.0;
+    // ------------------------------------------------------------------------
 }
 
 
@@ -852,6 +877,34 @@ void LasWriter::writeView(const PointViewPtr view)
             writeLazPerfBuf(m_pointBuf.data(), pointLen, filled);
         else
             m_ostream->write(m_pointBuf.data(), filled * pointLen);
+
+        // ----- NEW: progress accounting & conditional reporting -----
+        {
+            std::lock_guard<std::mutex> lock(m_progress_mutex);
+            m_points_written += static_cast<uint64_t>(filled);
+
+            bool send = false;
+            double percent = -1.0;
+            if (m_total_points > 0) {
+                percent = (100.0 * double(m_points_written) / double(m_total_points));
+                if (m_last_reported_percent < 0 || (percent - m_last_reported_percent) >= m_percent_step) send = true;
+            } else {
+                if ((m_points_written - m_last_reported_points) >= m_point_step) send = true;
+            }
+
+            if (send) {
+                // Format: "WROTE:<points_written>" or include percent "WROTE:<points>|<percent>"
+                std::ostringstream oss;
+                oss << "WROTE:" << m_points_written;
+                if (m_total_points > 0) oss << ",PCT:" << std::fixed << std::setprecision(2) << percent;
+                // use safe write
+                Utils::writeProgressSafe(m_progressFd, oss.str() + "\n");
+
+                // update last reported
+                m_last_reported_points = m_points_written;
+                if (m_total_points > 0) m_last_reported_percent = percent;
+            }
+        }
     }
     Utils::writeProgress(m_progressFd, "DONEVIEW", std::to_string(view->size()));
 }
@@ -1072,6 +1125,15 @@ bool LasWriter::fillPointBuf(PointRef& point, LeInserter& ostream)
     double yConverted = m_scaling.m_yXform.fromScaled(y);
     double zConverted = m_scaling.m_zXform.fromScaled(z);
     d->summary.addPoint(xConverted, yConverted, zConverted, returnNumber);
+    {
+        std::lock_guard<std::mutex> lock(m_progress_mutex);
+        m_points_written++;
+        if (m_points_written % 100000 == 0) {
+            std::cout << m_points_written << std::endl;
+            std::ostringstream oss; oss << "WROTE:" << m_points_written << "\n";
+            Utils::writeProgressSafe(m_progressFd, oss.str());
+        }
+    }
     return true;
 }
 
